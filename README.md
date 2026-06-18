@@ -1,51 +1,79 @@
-# transcription-bot
+# YouTube Summarizer
 
 Bot de Telegram + CLI para transcribir y resumir videos de YouTube.
 
 **Pipeline:** NoteGPT.io → youtube-transcript-api (fallback) → Gemini 3.1 Flash-Lite → Telegram
 
-Extraído de [marodriguezd/my-termux](https://github.com/marodriguezd/my-termux).
-
 ## Requisitos
 
 - Python 3.10+
-- `GOOGLE_API_KEY` de [Google AI Studio](https://aistudio.google.com/app/apikey)
-- Token de bot de [@BotFather](https://t.me/BotFather)
-- (Opcional) Cuenta en [NoteGPT.io](https://notegpt.io) para transcripciones más fiables
+- `pip install -r requirements.txt`
 
-## Setup
+## Instalación
 
 ```bash
+# Linux / macOS
 ./setup.sh
+
+# O manual (todas las plataformas)
+python3 -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
 ```
 
-Edita `.env` con tus credenciales.
+## Configuración
+
+```bash
+# Asistente gráfico (tkinter)
+python run.py setup --gui
+
+# Asistente de terminal
+python run.py setup --tui
+
+# O edita .env manualmente
+nano .env
+```
 
 ## Uso
 
-### Bot de Telegram
-
 ```bash
+# Arrancar bot en primer plano
+python run.py bot
+
+# Arrancar bot en segundo plano (multiplataforma)
+python run.py start
+
+# Detener bot
+python run.py stop
+
+# Ver estado
+python run.py status
+
+# Menú interactivo
+python run.py
+
+# Pipeline CLI
+python run.py pipeline "https://youtu.be/VIDEO_ID"
+python run.py pipeline "https://youtu.be/VIDEO_ID" -o resumen.md
+
+# Linux/macOS (atajo)
 ./start.sh
 ```
 
-Envía una URL de YouTube al bot en Telegram.
+## Estructura
 
-### CLI
-
-```bash
-./venv/bin/python pipeline.py "https://youtu.be/VIDEO_ID"
+```
+src/
+├── bot.py           Bot de Telegram (polling continuo)
+├── transcriber.py   Transcripción: NoteGPT + youtube-transcript-api
+├── summarizer.py    Resumen con Gemini 3.1 Flash-Lite
+├── pipeline.py      CLI unificado
+├── config.py        Gestor de configuración (.env)
+├── tui.py           Asistente de terminal (TUI)
+├── gui.py           Asistente gráfico (tkinter)
+└── daemon.py        Gestor de procesos en segundo plano
+run.py               Punto de entrada unificado
 ```
 
-## Archivos
-
-| Archivo | Descripción |
-|---------|-------------|
-| `bot.py` | Bot de Telegram (polling continuo) |
-| `transcriber.py` | Transcripción NoteGPT + fallback |
-| `summarizer.py` | Resumen con Gemini 3.1 Flash-Lite |
-| `pipeline.py` | CLI unificado |
-| `start.sh` | Entrypoint para arrancar el bot |
-| `setup.sh` | Setup inicial del entorno |
-
-Ver `SKILL.md` del repo original para documentación completa del pipeline.
+Extraído de [marodriguezd/my-termux](https://github.com/marodriguezd/my-termux).

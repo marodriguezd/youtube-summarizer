@@ -11,22 +11,11 @@ import time
 import logging
 from pathlib import Path
 
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    with open(env_path) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                v = v.strip().strip("\"'")
-                if v:
-                    os.environ.setdefault(k.strip(), v)
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("bot")
 
-from transcriber import fetch_transcript, extract_video_id, note_login
-from summarizer import call_gemini
+from .transcriber import fetch_transcript, extract_video_id, note_login
+from .summarizer import call_gemini
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
