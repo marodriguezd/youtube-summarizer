@@ -6,8 +6,12 @@ pipeline.py — Pipeline CLI: transcripción + resumen con Gemini.
 import os
 import sys
 
-from .transcriber import fetch_transcript, extract_video_id
-from .summarizer import call_gemini
+try:
+    from .transcriber import fetch_transcript, extract_video_id
+    from .summarizer import call_gemini
+except ImportError:
+    from src.transcriber import fetch_transcript, extract_video_id
+    from src.summarizer import call_gemini
 
 
 def run_pipeline(url: str, output: str = None):

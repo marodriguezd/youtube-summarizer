@@ -8,14 +8,19 @@ import os
 import re
 import sys
 import time
+import signal
 import logging
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("bot")
 
-from .transcriber import fetch_transcript, extract_video_id, note_login
-from .summarizer import call_gemini
+try:
+    from .transcriber import fetch_transcript, extract_video_id, note_login
+    from .summarizer import call_gemini
+except ImportError:
+    from src.transcriber import fetch_transcript, extract_video_id, note_login
+    from src.summarizer import call_gemini
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
@@ -26,6 +31,19 @@ if not TELEGRAM_BOT_TOKEN:
 if not GOOGLE_API_KEY:
     log.error("GOOGLE_API_KEY no configurado")
     sys.exit(1)
+
+running = True
+
+
+def _signal_handler(signum, frame):
+    global running
+    signame = signal.Signals(signum).name
+    log.info(f"Señal {signame} recibida, cerrando bot...")
+    running = False
+
+
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
 
 log.info("Bot iniciado")
 
@@ -69,7 +87,7 @@ def main():
     offset = 0
     last_gemini_time = 0
 
-    while True:
+    while running:
         try:
             url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
             resp = requests.get(url, params={
@@ -161,6 +179,10 @@ def main():
             log.error(f"Error inesperado: {str(e)[:200]}")
             time.sleep(5)
 
+    log.info("Bot finalizado")
+
 
 if __name__ == "__main__":
+    if __package__ is None:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     main()

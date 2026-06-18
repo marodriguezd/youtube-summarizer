@@ -7,7 +7,10 @@ import os
 import sys
 from pathlib import Path
 
-from .config import FIELDS, get_creds, save_creds, validate_creds, has_minimum, ENV_PATH
+try:
+    from .config import FIELDS, get_creds, save_creds, validate_creds, has_minimum, ENV_PATH
+except ImportError:
+    from src.config import FIELDS, get_creds, save_creds, validate_creds, has_minimum, ENV_PATH
 
 
 def _c():
@@ -224,12 +227,15 @@ def show_main_menu():
         print("  [1] Configurar")
         print("  [2] Arrancar bot (primer plano)")
         print("  [3] Arrancar bot (segundo plano)")
-        print("  [4] Ver estado")
-        print("  [5] Detener bot")
-        print("  [6] Pipeline CLI — transcribir un video")
-        print("  [7] Salir")
+        print("  [4] Watchdog — reinicio automático si falla")
+        print("  [5] Ver estado")
+        print("  [6] Ver logs")
+        print("  [7] Detener bot")
+        print("  [8] Reiniciar bot")
+        print("  [9] Pipeline CLI — transcribir un video")
+        print("  [0] Salir")
         print()
-        op = _input("  Selecciona [1-7]: ")
+        op = _input("  Selecciona [0-9]: ")
 
         if op == "1":
             run_tui_setup()
@@ -239,7 +245,8 @@ def show_main_menu():
                 _input("  Presiona Enter...")
                 continue
             print(_yellow("\n  Arrancando bot en primer plano..."))
-            _input("  Presiona Enter para continuar...")
+            print(_yellow("  Presiona Ctrl+C para detener.\n"))
+            _input("  Presiona Enter para iniciar...")
             from .bot import main
             main()
         elif op == "3":
@@ -251,20 +258,38 @@ def show_main_menu():
             start()
             _input("  Presiona Enter...")
         elif op == "4":
+            if not has_minimum():
+                print(_red("\n  ❌ Configura primero las credenciales."))
+                _input("  Presiona Enter...")
+                continue
+            from .daemon import run_forever
+            run_forever()
+        elif op == "5":
             from .daemon import status as daemon_status
             daemon_status()
             print()
             _input("  Presiona Enter...")
-        elif op == "5":
+        elif op == "6":
+            from .daemon import logs
+            logs()
+            print()
+            _input("  Presiona Enter...")
+        elif op == "7":
             from .daemon import stop
             stop()
             _input("  Presiona Enter...")
-        elif op == "6":
+        elif op == "8":
+            from .daemon import stop as ds, start as dst
+            ds()
+            print()
+            dst()
+            _input("  Presiona Enter...")
+        elif op == "9":
             url = _input("  URL de YouTube: ")
             if url:
                 from .pipeline import run_pipeline
                 run_pipeline(url)
                 _input("\n  Presiona Enter...")
-        elif op == "7":
+        elif op == "0":
             print()
             sys.exit(0)

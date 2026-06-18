@@ -12,54 +12,102 @@ Bot de Telegram + CLI para transcribir y resumir videos de YouTube.
 ## Instalación
 
 ```bash
-# Linux / macOS
+# Opción A: Linux / macOS
 ./setup.sh
 
-# O manual (todas las plataformas)
+# Opción B: manual (todas las plataformas)
 python3 -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
+source venv/bin/activate              # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-## Configuración
+## Configuración inicial
 
 ```bash
-# Asistente gráfico (tkinter)
-python run.py setup --gui
-
-# Asistente de terminal
+# Terminal (recomendado, sin dependencias extra)
 python run.py setup --tui
+
+# Ventana gráfica (tkinter)
+python run.py setup --gui
 
 # O edita .env manualmente
 nano .env
 ```
 
+El asistente te guía para configurar:
+- `GOOGLE_API_KEY` — [Google AI Studio](https://aistudio.google.com/app/apikey)
+- `TELEGRAM_BOT_TOKEN` — [@BotFather](https://t.me/BotFather)
+- `NG_EMAIL` / `NG_PASSWORD` — [NoteGPT.io](https://notegpt.io) (opcional)
+
+Todas las credenciales se guardan en `.env` local con permisos `600`.
+
 ## Uso
 
+### Bot de Telegram
+
 ```bash
-# Arrancar bot en primer plano
+# Primer plano (Ctrl+C para detener)
 python run.py bot
 
-# Arrancar bot en segundo plano (multiplataforma)
+# Segundo plano (multiplataforma)
 python run.py start
-
-# Detener bot
-python run.py stop
-
-# Ver estado
 python run.py status
+python run.py logs
+python run.py stop
+python run.py restart
 
-# Menú interactivo
-python run.py
+# Watchdog: reinicio automático si el bot falla (ideal para producción)
+python run.py forever
+```
 
-# Pipeline CLI
+### CLI (transcripción + resumen)
+
+```bash
 python run.py pipeline "https://youtu.be/VIDEO_ID"
 python run.py pipeline "https://youtu.be/VIDEO_ID" -o resumen.md
-
-# Linux/macOS (atajo)
-./start.sh
 ```
+
+### Menú interactivo
+
+```bash
+python run.py
+```
+
+## Producción
+
+### Recomendaciones para deploy
+
+| Escenario | Comando / Herramienta |
+|-----------|----------------------|
+| Docker | `python run.py forever` como entrypoint |
+| systemd | Ejecutar `python run.py forever` en el service |
+| supervisord | `command=python run.py forever` |
+| Servidor VPS | `python run.py start` + cron que ejecute `python run.py start` cada hora |
+| Windows (Tray) | `python run.py start` |
+| Linux/macOS (CLI) | `./start.sh` |
+
+### Watchdog (auto-restart)
+
+```bash
+python run.py forever
+```
+
+Lanza el bot con un watchdog que lo reinicia automáticamente si falla.
+Corre en primer plano. Ideal como entrypoint de Docker o service de systemd.
+
+### Logs
+
+```bash
+# Ver últimas líneas
+python run.py logs
+
+# Ver log completo
+cat logs/bot.log
+```
+
+Los logs se escriben en `logs/bot.log`. Se recomienda configurar logrotate
+en Linux para rotación automática.
 
 ## Estructura
 

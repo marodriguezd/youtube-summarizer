@@ -1,6 +1,6 @@
 """
 daemon.py — Gestor de procesos en segundo plano (multiplataforma).
-Inicia, detiene y verifica el estado del bot usando subprocess + PID file.
+Inicia, detiene, monitorea y verifica el estado del bot.
 Funciona en Linux, macOS y Windows.
 """
 
@@ -11,15 +11,18 @@ import subprocess
 import time
 from pathlib import Path
 
-from .config import get_env_path
+try:
+    from .config import get_env_path
+except ImportError:
+    from src.config import get_env_path
 
 PID_FILE = get_env_path().parent / ".bot.pid"
 LOG_DIR = get_env_path().parent / "logs"
 BOT_LOG = LOG_DIR / "bot.log"
+PROJECT_ROOT = get_env_path().parent
 
 
 def _is_running(pid: int) -> bool:
-    """Verifica si un PID existe (funciona en Unix y Windows)."""
     try:
         os.kill(pid, 0)
         return True
@@ -27,6 +30,31 @@ def _is_running(pid: int) -> bool:
         return True
     except (ProcessLookupError, OSError):
         return False
+
+
+def _launch_bot(log_file) -> subprocess.Popen:
+    """Lanza el bot como módulo (-m src.bot) desde la raíz del proyecto."""
+    return subprocess.Popen(
+        [sys.executable, "-m", "src.bot"],
+        cwd=str(PROJECT_ROOT),
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def _kill_process(pid: int):
+    """Envía señal de parada al proceso."""
+    try:
+        if os.name == "nt":
+            os.kill(pid, signal.CTRL_BREAK_EVENT)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        pass
+    except Exception as e:
+        print(f"  Error al detener PID {pid}: {e}")
 
 
 def start():
@@ -40,17 +68,9 @@ def start():
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-    bot_script = os.path.join(os.path.dirname(__file__), "bot.py")
-
     with open(BOT_LOG, "a") as log:
         log.write(f"\n--- Inicio {time.ctime()} ---\n")
-        proc = subprocess.Popen(
-            [sys.executable, bot_script],
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        proc = _launch_bot(log)
 
     with open(PID_FILE, "w") as f:
         f.write(str(proc.pid))
@@ -60,8 +80,38 @@ def start():
         print(f"  ✅ Bot arrancado (PID {proc.pid})")
         print(f"     Log: {BOT_LOG}")
     else:
-        print(f"  ❌ El bot falló al arrancar. Revisa: tail -20 {BOT_LOG}")
+        print(f"  ❌ El bot falló al arrancar. Revisa logs.")
         PID_FILE.unlink(missing_ok=True)
+
+
+def run_forever():
+    """Lanza el bot con watchdog: lo reinicia automáticamente si falla.
+    Corre en primer plano (ideal para systemd, docker, supervisord)."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"  🛡️  Watchdog activo — reinicio automático si el bot falla")
+    print(f"     Log: {BOT_LOG}")
+    print(f"     Ctrl+C para detener\n")
+
+    first = True
+    while True:
+        if not first:
+            print(f"  🔄 Reintentando en 5s...")
+            for i in range(5, 0, -1):
+                print(f"     {i}...")
+                time.sleep(1)
+        first = False
+
+        with open(BOT_LOG, "a") as log:
+            log.write(f"\n--- Watchdog: inicio {time.ctime()} ---\n")
+            proc = _launch_bot(log)
+
+        print(f"  🤖 Bot arrancado (PID {proc.pid})")
+        proc.wait()
+
+        if proc.returncode == 0:
+            print(f"  ✅ Bot terminó normalmente (PID {proc.pid})")
+            break
+        print(f"  ⚠️  Bot terminó con código {proc.returncode}, reiniciando...")
 
 
 def stop():
@@ -79,20 +129,17 @@ def stop():
         return
 
     pid = int(pid)
-    try:
-        if os.name == "nt":
-            os.kill(pid, signal.CTRL_BREAK_EVENT)
-        else:
-            os.kill(pid, signal.SIGTERM)
-        time.sleep(1)
-    except ProcessLookupError:
-        pass
-    except Exception as e:
-        print(f"  Error al detener: {e}")
+    _kill_process(pid)
+    time.sleep(1)
 
-    if PID_FILE.exists():
-        PID_FILE.unlink()
+    # Forzar si sigue vivo
+    if _is_running(pid):
+        try:
+            os.kill(pid, signal.SIGKILL if os.name != "nt" else signal.SIGTERM)
+        except Exception:
+            pass
 
+    PID_FILE.unlink(missing_ok=True)
     print(f"  ✅ Bot detenido (PID {pid})")
 
 
@@ -120,6 +167,19 @@ def status():
         print("  ❌ PID file existe pero el proceso ya no está activo.")
         PID_FILE.unlink(missing_ok=True)
         return False
+
+
+def logs(lines: int = 30):
+    """Muestra las últimas líneas del log."""
+    if not BOT_LOG.exists():
+        print("  No hay archivo de log todavía.")
+        return
+    with open(BOT_LOG) as f:
+        all_lines = f.readlines()
+    tail = all_lines[-lines:]
+    print(f"  📄 Últimas {len(tail)} líneas de {BOT_LOG}:\n")
+    for line in tail:
+        print(line, end="")
 
 
 def _fmt_size(bytes_: int) -> str:

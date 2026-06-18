@@ -8,7 +8,10 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from .config import FIELDS, get_creds, save_creds, validate_creds, has_minimum
+try:
+    from .config import FIELDS, get_creds, save_creds, validate_creds, has_minimum
+except ImportError:
+    from src.config import FIELDS, get_creds, save_creds, validate_creds, has_minimum
 
 
 def run_gui_setup():
@@ -24,13 +27,6 @@ def run_gui_setup():
     root.title("YouTube Summarizer — Configuración")
     root.geometry("520x480")
     root.resizable(False, False)
-
-    if os.name != "nt":
-        try:
-            root.iconify()
-        except Exception:
-            pass
-
     frame = ttk.Frame(root, padding="20")
     frame.pack(fill="both", expand=True)
 

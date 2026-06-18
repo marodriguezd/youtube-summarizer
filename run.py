@@ -10,7 +10,10 @@ Uso:
   python run.py bot                    Arrancar bot (primer plano)
   python run.py start                  Arrancar bot (segundo plano)
   python run.py stop                   Detener bot
+  python run.py restart                Reiniciar bot
   python run.py status                 Estado del bot
+  python run.py logs                   Ver últimas líneas del log
+  python run.py forever                Watchdog: reinicio automático en fallo
   python run.py pipeline <url>         Transcribir y resumir un video
   python run.py pipeline <url> -o arch  Guardar resumen a archivo
 """
@@ -35,7 +38,10 @@ Ejemplos:
   python run.py bot              Arrancar bot en primer plano
   python run.py start            Arrancar bot en segundo plano
   python run.py stop             Detener bot
+  python run.py restart          Reiniciar bot
   python run.py status           Ver estado del bot
+  python run.py logs             Ver últimas líneas del log
+  python run.py forever          Watchdog: reinicio automático en fallo
   python run.py pipeline <url>   Transcribir y resumir un video
   python run.py pipeline <url> -o resumen.md
         """,
@@ -50,7 +56,10 @@ Ejemplos:
     subparsers.add_parser("bot", help="Arrancar bot en primer plano")
     subparsers.add_parser("start", help="Arrancar bot en segundo plano")
     subparsers.add_parser("stop", help="Detener bot en segundo plano")
+    subparsers.add_parser("restart", help="Reiniciar bot")
     subparsers.add_parser("status", help="Verificar estado del bot")
+    subparsers.add_parser("logs", help="Ver últimas líneas del log")
+    subparsers.add_parser("forever", help="Watchdog: reinicio automático si el bot falla")
 
     p_pipe = subparsers.add_parser("pipeline", help="Pipeline CLI: transcripción + resumen")
     p_pipe.add_argument("url", help="URL del video de YouTube")
@@ -68,8 +77,15 @@ Ejemplos:
         _run_start()
     elif args.command == "stop":
         _run_stop()
+    elif args.command == "restart":
+        _run_stop()
+        _run_start()
     elif args.command == "status":
         _run_status()
+    elif args.command == "logs":
+        _run_logs()
+    elif args.command == "forever":
+        _run_forever()
     elif args.command == "pipeline":
         _run_pipeline(args.url, args.output)
 
@@ -121,6 +137,16 @@ def _run_stop():
 def _run_status():
     from src.daemon import status as daemon_status
     daemon_status()
+
+
+def _run_logs():
+    from src.daemon import logs
+    logs()
+
+
+def _run_forever():
+    from src.daemon import run_forever
+    run_forever()
 
 
 def _run_pipeline(url, output):
