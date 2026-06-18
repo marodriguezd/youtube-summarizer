@@ -25,13 +25,6 @@ except ImportError:
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
-if not TELEGRAM_BOT_TOKEN:
-    log.error("TELEGRAM_BOT_TOKEN no configurado")
-    sys.exit(1)
-if not GOOGLE_API_KEY:
-    log.error("GOOGLE_API_KEY no configurado")
-    sys.exit(1)
-
 running = True
 
 
@@ -81,6 +74,17 @@ def clean_result(result: str) -> str:
 
 def main():
     import requests
+
+    global TELEGRAM_BOT_TOKEN, GOOGLE_API_KEY
+    TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+    GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+
+    if not TELEGRAM_BOT_TOKEN:
+        log.error("TELEGRAM_BOT_TOKEN no configurado. Ejecuta: python run.py setup")
+        sys.exit(1)
+    if not GOOGLE_API_KEY:
+        log.error("GOOGLE_API_KEY no configurado. Ejecuta: python run.py setup")
+        sys.exit(1)
 
     note_login()
 
