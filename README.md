@@ -124,4 +124,3 @@ src/
 run.py               Punto de entrada unificado
 ```
 
-Extraído de [marodriguezd/my-termux](https://github.com/marodriguezd/my-termux).
