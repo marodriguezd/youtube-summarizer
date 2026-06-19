@@ -26,6 +26,9 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 running = True
+# Track de video_ids ya procesados para evitar duplicados por reenvío de Telegram
+_processed_ids = set()
+_MAX_PROCESSED = 100
 
 
 def _signal_handler(signum, frame):
@@ -74,6 +77,12 @@ def clean_result(result: str) -> str:
 
 def main():
     import requests
+
+    try:
+        from .config import load_env
+    except ImportError:
+        from src.config import load_env
+    load_env()
 
     global TELEGRAM_BOT_TOKEN, GOOGLE_API_KEY
     TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -137,6 +146,16 @@ def main():
                 if not video_id:
                     tg_send(chat_id, "❌ No pude extraer el ID del video.")
                     continue
+
+                # 🛡️ Evitar duplicados: si Telegram reenvía el mismo update,
+                # saltamos el video si ya está en procesamiento o ya se procesó.
+                if video_id in _processed_ids:
+                    log.warning(f"Saltando {video_id} (ya procesado recientemente)")
+                    continue
+                _processed_ids.add(video_id)
+                # Poda para no acumular infinitamente
+                if len(_processed_ids) > _MAX_PROCESSED:
+                    _processed_ids.clear()
 
                 log.info(f"Procesando {video_id}")
 

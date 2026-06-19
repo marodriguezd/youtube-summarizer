@@ -12,9 +12,9 @@ import time
 from pathlib import Path
 
 try:
-    from .config import get_env_path
+    from .config import get_env_path, load_env
 except ImportError:
-    from src.config import get_env_path
+    from src.config import get_env_path, load_env
 
 PID_FILE = get_env_path().parent / ".bot.pid"
 LOG_DIR = get_env_path().parent / "logs"
@@ -59,6 +59,7 @@ def _kill_process(pid: int):
 
 def start():
     """Arranca el bot en segundo plano."""
+    load_env()
     if PID_FILE.exists():
         with open(PID_FILE) as f:
             pid = f.read().strip()
@@ -87,6 +88,7 @@ def start():
 def run_forever():
     """Lanza el bot con watchdog: lo reinicia automáticamente si falla.
     Corre en primer plano (ideal para systemd, docker, supervisord)."""
+    load_env()
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     print(f"  🛡️  Watchdog activo — reinicio automático si el bot falla")
     print(f"     Log: {BOT_LOG}")
