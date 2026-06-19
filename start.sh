@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 # start.sh — Arranca el bot en segundo plano (Linux/macOS).
 # Para Windows o multiplataforma, usa: python run.py start
 set -euo pipefail

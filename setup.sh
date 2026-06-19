@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 # setup.sh — Prepara el entorno: venv, dependencias, .env.
 # Funciona en Linux/macOS. Para Windows, sigue las instrucciones del README.
 set -euo pipefail

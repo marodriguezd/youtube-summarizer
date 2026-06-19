@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/data/data/com.termux/files/usr/bin/python3
 """
 run.py — Punto de entrada unificado multiplataforma.
 
