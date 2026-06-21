@@ -34,8 +34,13 @@ def _is_running(pid: int) -> bool:
 
 def _launch_bot(log_file) -> subprocess.Popen:
     """Lanza el bot como módulo (-m src.bot) desde la raíz del proyecto."""
+    # Usar explícitamente el Python del venv para que las dependencias estén disponibles
+    venv_python = str(PROJECT_ROOT / "venv" / "bin" / "python")
+    if not os.path.isfile(venv_python):
+        # Fallback a sys.executable si no hay venv
+        venv_python = sys.executable
     return subprocess.Popen(
-        [sys.executable, "-m", "src.bot"],
+        [venv_python, "-m", "src.bot"],
         cwd=str(PROJECT_ROOT),
         stdout=log_file,
         stderr=subprocess.STDOUT,

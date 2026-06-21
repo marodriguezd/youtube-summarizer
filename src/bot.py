@@ -29,6 +29,7 @@ running = True
 # Track de video_ids ya procesados para evitar duplicados por reenvío de Telegram
 _processed_ids = set()
 _MAX_PROCESSED = 100
+_failed_ids = set()  # IDs que fallaron, para poder reintentar
 
 
 def _signal_handler(signum, frame):
@@ -130,13 +131,33 @@ def main():
                     tg_send(chat_id,
                          "🎬 <b>YouTube Transcriber</b>\n\n"
                          "Envíame un enlace de YouTube y te devuelvo un resumen "
-                         "optimizado para Discord.")
+                         "optimizado para Discord.\n\n"
+                         "<b>Comandos:</b>\n"
+                         "/help — Ayuda detallada\n"
+                         "/retry — Reintentar vídeos que fallaron")
                     continue
+
                 if text == "/help":
                     tg_send(chat_id,
                          "<b>Comandos:</b>\n"
-                         "/start - Info\n/help - Ayuda\n\n"
-                         "Pega un enlace de YouTube y te lo resumo.")
+                         "/start — Info\n"
+                         "/help — Esta ayuda\n"
+                         "/retry — Reintentar vídeos que fallaron\n\n"
+                         "<b>Consejos:</b>\n"
+                         "• Si un vídeo falla, puedes reenviar el enlace para reintentar\n"
+                         "• Si el error persiste, usa /retry para ver los fallos disponibles\n"
+                         "• Los fallos suelen ser temporales (rate limit, IP bloqueada, etc.)\n")
+                    continue
+
+                if text == "/retry":
+                    if not _failed_ids:
+                        tg_send(chat_id, "📭 No hay vídeos en la lista de fallos para reintentar.")
+                        continue
+                    ids = ", ".join(sorted(_failed_ids))
+                    _failed_ids.clear()
+                    tg_send(chat_id,
+                         f"🔄 Lista de fallos limpiada ({ids}).\n"
+                         "Puedes reenviar los enlaces que fallaron y lo intentaré de nuevo.")
                     continue
 
                 if not re.search(r'(youtube\.com|youtu\.be)', text):
@@ -147,15 +168,14 @@ def main():
                     tg_send(chat_id, "❌ No pude extraer el ID del video.")
                     continue
 
-                # 🛡️ Evitar duplicados: si Telegram reenvía el mismo update,
-                # saltamos el video si ya está en procesamiento o ya se procesó.
+                # 🛡️ Control de duplicados: solo bloquea IDs EXITOSOS, no fallidos.
+                # Si el video ya se procesó con éxito, avisamos y ofrecemos /retry.
                 if video_id in _processed_ids:
-                    log.warning(f"Saltando {video_id} (ya procesado recientemente)")
+                    log.warning(f"Saltando {video_id} (ya procesado exitosamente)")
+                    tg_send(chat_id,
+                         f"⏭️ El video <code>{video_id}</code> ya se procesó antes. "
+                         f"Usa /retry si quieres forzar un nuevo intento.")
                     continue
-                _processed_ids.add(video_id)
-                # Poda para no acumular infinitamente
-                if len(_processed_ids) > _MAX_PROCESSED:
-                    _processed_ids.clear()
 
                 log.info(f"Procesando {video_id}")
 
@@ -168,9 +188,12 @@ def main():
 
                 transcript = fetch_transcript(video_id)
                 if not transcript:
+                    _failed_ids.add(video_id)
                     tg_send(chat_id,
                          "❌ No pude obtener transcripción. El video puede no tener subtítulos "
-                         "o YouTube está bloqueando la IP. Prueba con otro video.")
+                         "o YouTube está bloqueando la IP.\n\n"
+                         "📌 <b>Puedes reenviar el enlace</b> para reintentar automáticamente.\n"
+                         "O usa /retry para gestionar los fallos.")
                     continue
 
                 log.info(f"Transcripción: {len(transcript)} chars")
@@ -180,12 +203,19 @@ def main():
                     summary = call_gemini(transcript, video_url, GOOGLE_API_KEY)
                 except RuntimeError as e:
                     log.error(f"Gemini error: {e}")
-                    tg_send(chat_id, f"❌ Error al resumir: {str(e)[:200]}")
+                    _failed_ids.add(video_id)
+                    tg_send(chat_id, f"❌ Error al resumir: {str(e)[:200]}\n\nReenvía el enlace para reintentar.")
                     continue
                 finally:
                     last_gemini_time = time.time()
 
                 cleaned = clean_result(summary)
+                # ✅ Solo marcar como procesado si se envió el resumen con éxito
+                _processed_ids.add(video_id)
+                _failed_ids.discard(video_id)
+                # Poda para no acumular infinitamente
+                if len(_processed_ids) > _MAX_PROCESSED:
+                    _processed_ids.clear()
                 tg_send_long(chat_id, cleaned)
                 log.info(f"Resumen enviado ({len(cleaned)} chars)")
 
