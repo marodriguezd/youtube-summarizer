@@ -98,6 +98,12 @@ Puedes editar este prompt para:
 
 No necesitas tocar nada más del código — solo edita el prompt y reinicia el bot.
 
+### ⚠️ Validación del límite de caracteres
+
+El resumidor (`call_gemini()` en `src/summarizer.py`) aplica un **límite estricto de 1900 caracteres** sobre el resultado final. Si Gemini devuelve un resumen que se pasa, el bot lo reintenta automáticamente con una instrucción más severa, hasta 3 intentos. Así se garantiza que el resultado siempre cabe sin necesidad de truncar.
+
+> Si cambias el límite de caracteres dentro de `SUMMARIZER_PROMPT`, actualiza también la constante `MAX_CHARS` dentro de `call_gemini()` para que coincida.
+
 ## Producción
 
 ### Recomendaciones para deploy
