@@ -77,42 +77,72 @@ VIDEO_URL: {video_url}"""
 
 
 def call_gemini(transcript: str, video_url: str, api_key: str) -> str:
-    prompt = SUMMARIZER_PROMPT.format(transcript=transcript, video_url=video_url)
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048}
-    }
+    MAX_CHARS = 1900
+    MAX_LENGTH_RETRIES = 3
 
+    prompt = SUMMARIZER_PROMPT.format(transcript=transcript, video_url=video_url)
     url = GEMINI_URL + "?key=" + api_key
 
-    for attempt in range(1, 4):
-        try:
-            import requests
-            resp = requests.post(url, json=payload, timeout=120)
-            resp.raise_for_status()
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                raise RuntimeError("Gemini sin candidatos")
-            parts = candidates[0].get("content", {}).get("parts", [])
-            result = parts[0].get("text", "") if parts else ""
-            if "link_placeholder" in result:
-                result = result.replace("link_placeholder", video_url)
-            return result
-        except requests.exceptions.HTTPError as e:
-            code = e.response.status_code
-            if code == 429 and attempt < 3:
-                wait = 10 * (2 ** (attempt - 1))
-                log.warning(f"Gemini rate limit, reintento en {wait}s")
-                time.sleep(wait)
-                continue
-            raise RuntimeError(f"Gemini {code}: {str(e)[:200]}")
-        except Exception as e:
-            if attempt < 3:
-                wait = 10 * (2 ** (attempt - 1))
-                log.warning(f"Gemini error, reintento en {wait}s: {str(e)[:100]}")
-                time.sleep(wait)
-                continue
-            raise RuntimeError(str(e))
+    for length_attempt in range(1, MAX_LENGTH_RETRIES + 1):
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048}
+        }
 
-    raise RuntimeError("Gemini falló tras 3 intentos")
+        for http_attempt in range(1, 4):
+            try:
+                import requests
+                resp = requests.post(url, json=payload, timeout=120)
+                resp.raise_for_status()
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    raise RuntimeError("Gemini sin candidatos")
+                parts = candidates[0].get("content", {}).get("parts", [])
+                result = parts[0].get("text", "") if parts else ""
+                if "link_placeholder" in result:
+                    result = result.replace("link_placeholder", video_url)
+
+                char_count = len(result)
+                if char_count <= MAX_CHARS:
+                    return result
+
+                # Demasiado largo — reintentar con prompt más estricto
+                if length_attempt >= MAX_LENGTH_RETRIES:
+                    raise RuntimeError(
+                        f"Resumen demasiado largo tras {MAX_LENGTH_RETRIES} intentos: "
+                        f"{char_count} chars (límite {MAX_CHARS})"
+                    )
+
+                log.warning(
+                    f"Summary too long ({char_count} chars), "
+                    f"retry {length_attempt}/{MAX_LENGTH_RETRIES}"
+                )
+                prompt += (
+                    f"\n\n⚠️ IMPORTANTE: El resumen anterior tenía {char_count} "
+                    f"caracteres, pero el límite es {MAX_CHARS}. Reduce drásticamente: "
+                    f"elimina redundancias, acorta las secciones y sé más conciso. "
+                    f"NO superes {MAX_CHARS} caracteres en total."
+                )
+                # Salir del bucle HTTP para reintentar con el prompt reforzado
+                break
+
+            except requests.exceptions.HTTPError as e:
+                code = e.response.status_code
+                if code == 429 and http_attempt < 3:
+                    wait = 10 * (2 ** (http_attempt - 1))
+                    log.warning(f"Gemini rate limit, reintento en {wait}s")
+                    time.sleep(wait)
+                    continue
+                raise RuntimeError(f"Gemini {code}: {str(e)[:200]}")
+            except RuntimeError:
+                raise  # Propagar errores nuestros (demasiado largo, etc.)
+            except Exception as e:
+                if http_attempt < 3:
+                    wait = 10 * (2 ** (http_attempt - 1))
+                    log.warning(f"Gemini error, reintento en {wait}s: {str(e)[:100]}")
+                    time.sleep(wait)
+                    continue
+                raise RuntimeError(str(e))
+
+    raise RuntimeError("Gemini falló tras todos los intentos")

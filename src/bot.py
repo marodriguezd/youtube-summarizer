@@ -70,18 +70,10 @@ def tg_send_long(chat_id: int, text: str):
         time.sleep(0.3)
 
 
-def clean_result(result: str, max_chars: int = 1900) -> str:
+def clean_result(result: str) -> str:
     c = re.sub(r'^```markdown\s*', '', result, flags=re.MULTILINE)
     c = re.sub(r'\s*```$', '', c, flags=re.MULTILINE)
-    c = c.strip()
-    # Corte duro a max_chars, rompiendo en el último espacio disponible
-    # para no partir palabras por la mitad.
-    if len(c) > max_chars:
-        cut = c.rfind(' ', 0, max_chars)
-        if cut == -1:
-            cut = max_chars
-        c = c[:cut] + "\n\n✂️ *[resumen truncado por límite de caracteres]*"
-    return c
+    return c.strip()
 
 
 def main():
