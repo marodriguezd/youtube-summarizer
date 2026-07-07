@@ -150,14 +150,16 @@ def main():
                     continue
 
                 if text == "/retry":
-                    if not _failed_ids:
-                        tg_send(chat_id, "📭 No hay vídeos en la lista de fallos para reintentar.")
+                    if not _failed_ids and not _processed_ids:
+                        tg_send(chat_id, "📭 No hay vídeos en caché para reintentar.")
                         continue
-                    ids = ", ".join(sorted(_failed_ids))
+                    
                     _failed_ids.clear()
+                    _processed_ids.clear()
+                    
                     tg_send(chat_id,
-                         f"🔄 Lista de fallos limpiada ({ids}).\n"
-                         "Puedes reenviar los enlaces que fallaron y lo intentaré de nuevo.")
+                         "🔄 Caché de vídeos borrada.\n"
+                         "Puedes reenviar cualquier enlace (ya sea que haya fallado o se haya completado antes) y lo intentaré de nuevo.")
                     continue
 
                 if not re.search(r'(youtube\.com|youtu\.be)', text):
