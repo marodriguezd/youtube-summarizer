@@ -25,11 +25,20 @@ PROJECT_ROOT = get_env_path().parent
 def _is_running(pid: int) -> bool:
     try:
         os.kill(pid, 0)
-        return True
-    except PermissionError:
-        return True
     except (ProcessLookupError, OSError):
         return False
+
+    # Extra check for Linux to avoid false positives with stale PIDs reused by other processes
+    if sys.platform.startswith("linux"):
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmdline = f.read().split(b'\x00')
+                if not any(b"python" in arg or b"src.bot" in arg for arg in cmdline):
+                    return False
+        except Exception:
+            pass
+
+    return True
 
 
 def _launch_bot(log_file) -> subprocess.Popen:
