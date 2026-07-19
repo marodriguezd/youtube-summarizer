@@ -15,6 +15,7 @@ echo "📥 Instalando dependencias..."
 
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
     cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
+    chmod 600 "$SCRIPT_DIR/.env"
     echo ""
     echo "⚠️  Se copió .env.example a .env"
     echo "   EDITA .env con tus credenciales:"

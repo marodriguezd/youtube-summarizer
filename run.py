@@ -19,7 +19,6 @@ Uso:
 """
 
 import sys
-import subprocess
 import argparse
 from pathlib import Path
 
@@ -105,7 +104,13 @@ def _run_setup(tui=False, gui=False):
     else:
         try:
             from src.gui import run_gui_setup
-            run_gui_setup()
+            # Si la GUI no está disponible (tkinter ausente o sin DISPLAY),
+            # run_gui_setup() devuelve False SIN lanzar excepción. Detectamos
+            # ese caso y lo forzamos al except común para que caiga a TUI.
+            if not run_gui_setup():
+                raise RuntimeError(
+                    "GUI setup returned False (tkinter no disponible); se fuerza fallback a TUI"
+                )
         except Exception:
             from src.tui import run_tui_setup
             run_tui_setup()
