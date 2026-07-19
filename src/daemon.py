@@ -79,8 +79,10 @@ def _wait_for_healthy(pid: int) -> bool:
             with open(BOT_LOG, "rb") as f:
                 f.seek(0, os.SEEK_END)
                 size = f.tell()
-                if size > tail_size:
-                    f.seek(size - tail_size)
+                # FIX (cold-start): si log < 4KB, max(0, ...) cae a 0 y leemos desde el
+                # inicio del archivo. Sin esto, f.read() leía "" porque el puntero
+                # quedaba al final y "_wait_for_healthy" timeoutaba en 30s exactos.
+                f.seek(max(0, size - tail_size))
                 tail = f.read().decode("utf-8", errors="replace")
             if "Bot iniciado" in tail:
                 if _is_running(pid):    # re-check tras la señal (cubre race condition)
