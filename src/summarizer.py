@@ -4,13 +4,25 @@ summarizer.py — Resume transcripciones con Gemini 3.1 Flash-Lite vía REST API
 No requiere google-generativeai (evita dependencia de cryptography).
 """
 
+import os
 import time
 import logging
 
 log = logging.getLogger("summarizer")
 
-GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+# Modelo Gemini primario configurable vía .env. Si Google lo retira,
+# el bot cae automáticamente al siguiente modelo de la lista de fallback.
+DEFAULT_GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
+FALLBACK_MODELS = [
+    "gemini-3.1-flash",            # próximo estable conocido
+    "gemini-2.5-flash-lite",       # estable GA
+]
+# dedupe preservando orden: el configurado (o default) siempre va primero.
+MODELS_TO_TRY = list(dict.fromkeys([DEFAULT_GEMINI_MODEL] + FALLBACK_MODELS))
+
+
+class GeminiModelUnavailable(Exception):
+    """Señal interna: el modelo probado devolvió 404. call_gemini() salta al siguiente."""
 
 SUMMARIZER_PROMPT = """Actúa como expert_summarizer, especializado en transformar transcripciones o vídeos en resúmenes optimizados para Discord.
 
@@ -77,16 +89,35 @@ VIDEO_URL: {video_url}"""
 
 
 def call_gemini(transcript: str, video_url: str, api_key: str) -> str:
+    """Prueba MODELS_TO_TRY secuencialmente hasta que uno funcione."""
+    last_err: Exception | None = None
+    for model in MODELS_TO_TRY:
+        try:
+            return _call_gemini_single_model(model, transcript, video_url, api_key)
+        except GeminiModelUnavailable as e:
+            log.warning(f"Modelo {e.args[0]} no disponible (404), probando siguiente")
+            last_err = e
+            continue
+    raise RuntimeError(
+        f"Todos los modelos Gemini fallaron. Probados: {MODELS_TO_TRY}. Último error: {last_err}"
+    )
+
+
+def _call_gemini_single_model(model: str, transcript: str, video_url: str, api_key: str) -> str:
+    """Llama a Gemini con UN modelo, preservando la lógica interna de length/http retries."""
     MAX_CHARS = 1900
     MAX_LENGTH_RETRIES = 3
 
-    prompt = SUMMARIZER_PROMPT.format(transcript=transcript, video_url=video_url)
-    url = GEMINI_URL + "?key=" + api_key
+    base_prompt = SUMMARIZER_PROMPT.format(transcript=transcript, video_url=video_url)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+    reinforce = ""     # acumulamos refuerzos entre length_attempt para no perderlos
 
     for length_attempt in range(1, MAX_LENGTH_RETRIES + 1):
+        prompt = base_prompt + reinforce
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048}
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
         }
 
         for http_attempt in range(1, 4):
@@ -107,7 +138,6 @@ def call_gemini(transcript: str, video_url: str, api_key: str) -> str:
                 if char_count <= MAX_CHARS:
                     return result
 
-                # Demasiado largo — reintentar con prompt más estricto
                 if length_attempt >= MAX_LENGTH_RETRIES:
                     raise RuntimeError(
                         f"Resumen demasiado largo tras {MAX_LENGTH_RETRIES} intentos: "
@@ -118,7 +148,7 @@ def call_gemini(transcript: str, video_url: str, api_key: str) -> str:
                     f"Summary too long ({char_count} chars), "
                     f"retry {length_attempt}/{MAX_LENGTH_RETRIES}"
                 )
-                prompt += (
+                reinforce += (
                     f"\n\n⚠️ IMPORTANTE: El resumen anterior tenía {char_count} "
                     f"caracteres, pero el límite es {MAX_CHARS}. Reduce drásticamente: "
                     f"elimina redundancias, acorta las secciones y sé más conciso. "
@@ -129,6 +159,8 @@ def call_gemini(transcript: str, video_url: str, api_key: str) -> str:
 
             except requests.exceptions.HTTPError as e:
                 code = e.response.status_code
+                if code == 404:
+                    raise GeminiModelUnavailable(model) from e
                 if code == 429 and http_attempt < 3:
                     wait = 10 * (2 ** (http_attempt - 1))
                     log.warning(f"Gemini rate limit, reintento en {wait}s")
@@ -145,4 +177,4 @@ def call_gemini(transcript: str, video_url: str, api_key: str) -> str:
                     continue
                 raise RuntimeError(str(e))
 
-    raise RuntimeError("Gemini falló tras todos los intentos")
+    raise RuntimeError("Gemini falló tras todos los intentos con este modelo")

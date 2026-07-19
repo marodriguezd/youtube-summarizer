@@ -21,6 +21,11 @@ LOG_DIR = get_env_path().parent / "logs"
 BOT_LOG = LOG_DIR / "bot.log"
 PROJECT_ROOT = get_env_path().parent
 
+# Health-check: tras lanzar el bot, esperamos hasta que escriba "Bot iniciado" al log
+# Y que su proceso siga vivo. Evita falsos positivos tipo "✅" cuando el bot ya murió.
+HEALTH_CHECK_TIMEOUT = 30    # segundos máximos
+HEALTH_CHECK_INTERVAL = 1    # cada cuánto re-leer el log
+
 
 def _is_running(pid: int) -> bool:
     try:
@@ -58,6 +63,36 @@ def _launch_bot(log_file) -> subprocess.Popen:
     )
 
 
+def _wait_for_healthy(pid: int) -> bool:
+    """
+    Espera hasta que el bot haya escrito 'Bot iniciado' al log Y su proceso siga vivo.
+    Devuelve True SOLO si ambas condiciones se cumplen dentro de HEALTH_CHECK_TIMEOUT.
+    Re-check tras cada lectura de log para evitar race condition (print → crash inmediato).
+    """
+    deadline = time.time() + HEALTH_CHECK_TIMEOUT
+    while time.time() < deadline:
+        if not _is_running(pid):
+            return False
+        try:
+            # Seek al final del log (no cargar entero en RAM — puede ser grande).
+            tail_size = 4096   # 4 KB bastan para encontrar "Bot iniciado"
+            with open(BOT_LOG, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                if size > tail_size:
+                    f.seek(size - tail_size)
+                tail = f.read().decode("utf-8", errors="replace")
+            if "Bot iniciado" in tail:
+                if _is_running(pid):    # re-check tras la señal (cubre race condition)
+                    return True
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+        time.sleep(HEALTH_CHECK_INTERVAL)
+    return False     # timeout sin señal de ready + proceso vivo
+
+
 def _kill_process(pid: int):
     """Envía señal de parada al proceso."""
     try:
@@ -90,12 +125,13 @@ def start():
     with open(PID_FILE, "w") as f:
         f.write(str(proc.pid))
 
-    time.sleep(2)
-    if _is_running(proc.pid):
-        print(f"  ✅ Bot arrancado (PID {proc.pid})")
+    if _wait_for_healthy(proc.pid):
+        print(f"  ✅ Bot arrancado y operativo (PID {proc.pid})")
         print(f"     Log: {BOT_LOG}")
     else:
-        print(f"  ❌ El bot falló al arrancar. Revisa logs.")
+        print(f"  ❌ El bot no levantó correctamente en {HEALTH_CHECK_TIMEOUT}s.")
+        print(f"     Revisa: tail -30 {BOT_LOG}")
+        _kill_process(proc.pid)               # kill ANTES del unlink (evita carrera)
         PID_FILE.unlink(missing_ok=True)
 
 

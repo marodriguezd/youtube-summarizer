@@ -26,10 +26,23 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 running = True
-# Track de video_ids ya procesados para evitar duplicados por reenvío de Telegram
+# Track de video_ids:
+# _processed_ids: set con clear-on-overflow (comportamiento legacy preservado).
+# _failed_ids:    dict con FIFO cap (memory-bounded contra trolls/spam).
 _processed_ids = set()
 _MAX_PROCESSED = 100
-_failed_ids = set()  # IDs que fallaron, para poder reintentar
+_failed_ids: dict[str, bool] = {}
+_MAX_FAILED = 200     # más permisivo que _MAX_PROCESSED: los fallos son útiles para /retry
+
+
+def _fifo_purge(d: dict, max_size: int) -> None:
+    """Borra los más viejos (FIFO) hasta que len(d) <= max_size. O(1) amortizado.
+
+    Aplicada SOLO a _failed_ids. _processed_ids conserva el clear-on-overflow legacy
+    por compatibilidad con comportamiento en producción.
+    """
+    while len(d) > max_size:
+        d.pop(next(iter(d)))
 
 
 def _signal_handler(signum, frame):
@@ -190,7 +203,8 @@ def main():
 
                 transcript = fetch_transcript(video_id)
                 if not transcript:
-                    _failed_ids.add(video_id)
+                    _failed_ids[video_id] = True
+                    _fifo_purge(_failed_ids, _MAX_FAILED)
                     tg_send(chat_id,
                          "❌ No pude obtener transcripción. El video puede no tener subtítulos "
                          "o YouTube está bloqueando la IP.\n\n"
@@ -205,7 +219,8 @@ def main():
                     summary = call_gemini(transcript, video_url, GOOGLE_API_KEY)
                 except RuntimeError as e:
                     log.error(f"Gemini error: {e}")
-                    _failed_ids.add(video_id)
+                    _failed_ids[video_id] = True
+                    _fifo_purge(_failed_ids, _MAX_FAILED)
                     tg_send(chat_id, f"❌ Error al resumir: {str(e)[:200]}\n\nReenvía el enlace para reintentar.")
                     continue
                 finally:
@@ -214,7 +229,7 @@ def main():
                 cleaned = clean_result(summary)
                 # ✅ Solo marcar como procesado si se envió el resumen con éxito
                 _processed_ids.add(video_id)
-                _failed_ids.discard(video_id)
+                _failed_ids.pop(video_id, None)
                 # Poda para no acumular infinitamente
                 if len(_processed_ids) > _MAX_PROCESSED:
                     _processed_ids.clear()

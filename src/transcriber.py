@@ -95,6 +95,27 @@ def _parse_note_transcript(data: dict) -> str | None:
     return None
 
 
+def _extract_texts(transcript) -> list[str]:
+    """
+    Normaliza segmentos de transcripción: acepta list de dicts, objetos con .text, o strings.
+    Filtra vacíos y whitespace redundante. Devuelve lista de strings no-vacíos.
+    """
+    out: list[str] = []
+    for seg in transcript:
+        if isinstance(seg, dict):
+            t = seg.get("text", "")
+        elif hasattr(seg, "text"):
+            t = seg.text
+        elif isinstance(seg, str):
+            t = seg
+        else:
+            continue
+        t = t.strip()
+        if t:
+            out.append(t)
+    return out
+
+
 def fetch_transcript(video_id: str) -> str | None:
     for attempt in range(2):
         if not note_login(force=(attempt > 0)):
@@ -145,14 +166,18 @@ def fetch_transcript(video_id: str) -> str | None:
             except Exception:
                 continue
         for t in tl:
-            transcript = t.fetch()
-            texts = []
-            for t2 in transcript:
-                if isinstance(t2, dict):
-                    texts.append(t2.get("text", ""))
-                elif hasattr(t2, "text"):
-                    texts.append(t2.text)
-            return " ".join(texts) if texts else None
+            try:
+                raw = t.fetch()
+            except Exception as e:
+                log.warning(
+                    f"youtube-transcript-api: fallo al fetch idioma "
+                    f"{getattr(t, 'language_code', '?')}: {e}"
+                )
+                continue
+            texts = _extract_texts(raw)
+            if texts:
+                return " ".join(texts)
+        return None     # agotados todos los idiomas disponibles
     except ImportError:
         log.warning("youtube-transcript-api no disponible")
         return None
